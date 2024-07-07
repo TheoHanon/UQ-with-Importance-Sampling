@@ -181,14 +181,6 @@ class Simulation_Parameter:
             divb = self.div(f, xnew)
 
             I += dt * (diva + divb) / 2
-
-            if np.isnan(I).any():
-                print("k = ", k)
-                # print(diva, divb)
-
-            # print(np.isnan(I).any())
-            
-
             qt[..., k] = qt[..., 0] * np.exp(-I)
 
         return qt
@@ -240,11 +232,11 @@ class Simulation_Parameter:
         """
 
         f = lambda x : x**alpha
-        p_post = np.array(self.p_xy(xpred, y))
+        p_post = np.array(self.p_xy(xpred, y)).reshape(1, -1)
         qt = np.array(qt)
-        # print(np.isnan(qt).any())
+        
         w = (p_post / qt) / np.sum(p_post/qt, axis = 1)
-    
+        # print(xpred.shape, p_post.shape, qt.shape, w.shape)
     
         return np.sum((f(xpred) * w), axis = 1)
     

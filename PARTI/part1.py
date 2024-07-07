@@ -510,10 +510,79 @@ def display_qt(mu_prop, var_prop, param):
     plt.show()
 
 
+def error_moments_vs_N(mu_prop, var_prop, param):
+
+    n = param.n    
+    m = param.m    
+    N = param.N 
+    nStep = param.nStep
+    dt = param.dt
+    var_x = param.var_x
+    var_yx = param.var_yx
+    A = param.A
+
+    
+    xtrue = np.random.normal(0, np.sqrt(var_x), (n, 1)) # true x
+    noise = np.random.normal(0, np.sqrt(var_yx), (m, 1))
+    y = A @ xtrue + noise # y = Ax + n
+
+    N_sample = [10, 100, 1000, 10000]
+
+    error_curve = np.empty((len(N_sample), 2, nStep, param.n))
+
+    for i , N in enumerate(N_sample):
+        param.N = N
+        x0 = np.random.normal(mu_prop, np.sqrt(var_prop), (n, N))
+       
+        xpred = param.gradient_flow(x0, y)
+        qt = param.compute_qt(mu_prop, var_prop, xpred, y)
+
+        m1 = param.compute_moment(1, y)
+        m2 = param.compute_moment(2, y)
+
+        m2_mc = np.array([param.compute_moment_IP(2, xpred[..., k], qt[..., k], y) for k in range(nStep)])
+        m1_mc = np.array([param.compute_moment_IP(1, xpred[..., k], qt[..., k], y) for k in range(nStep)])
+
+        error_curve[i, 0, :] = np.abs(m1_mc - m1)
+        error_curve[i, 1, :] = np.abs(m2_mc - m2)
+        
+
+    fig, ax = plt.subplots(len(N_sample), 2, figsize = (15, 9), sharex = True)
+
+    for i, (axleft, axright) in enumerate(zip(ax[:, 0], ax[:, 1])):
+
+        axleft.set_title(f"N = {N_sample[i]}")
+        axright.set_title(f"N = {N_sample[i]}")
+
+        if i == len(N_sample) - 1:
+            axleft.set_xlabel("Number of iterations")
+            axright.set_xlabel("Number of iterations")
+
+        axleft.semilogx(dt*np.arange(nStep), error_curve[i, 0, :, 0], marker = ".")
+        axleft.set_title(f"N = {N_sample[i]}")
+        axleft.set_ylabel(r"$\ell_1$-error")
+        axleft.grid(which = 'both')
+
+        axright.semilogx(dt*np.arange(nStep), error_curve[i, 1, :,0], marker = ".")
+        axright.set_title(f"N = {N_sample[i]}")
+        axright.set_ylabel(r"$\ell_1$-error")
+        axright.grid(which = 'both')
+
+    plt.suptitle(f"Error in moment estimation (x = {xtrue[0, 0]:.3f}, y = {y[0, 0]:.3f})", fontweight = 'bold', fontsize = 18)
+    fig.text(.265, .92, "Moment 1", fontweight = 'bold', fontsize = 15)
+    fig.text(.685, .92, "Moment 2", fontweight = 'bold', fontsize = 15)
+    plt.show()
+
+    
+
+
+
+
+
 if __name__ == "__main__":
 
-    nStep = 10
-    N = 50
+    nStep = 1000
+    N = 1000
     dt = 1e-2   
     n = 1
     m = 1
@@ -521,7 +590,8 @@ if __name__ == "__main__":
     var_yx = 1.0/np.sqrt(2)  
     A = np.eye(m, n)
     param1 = Simulation_Parameter_Gaussian(nStep, N, dt, n, m, A, var_x, var_yx)
-    merged_IP_ratio(0, 1, param1)
+    error_moments_vs_N(0, 1, param1)
+    # merged_IP_ratio(0, 2, param1)
     # display_qt(0, 1, param)
 
     weight = np.array([.25, .5, .25])
@@ -530,7 +600,7 @@ if __name__ == "__main__":
 
     # param2 = Simulation_Parameter_Gaussian_Mixture(nStep, N, dt, n, m, A, weight, mu, sigma, var_yx)
     # print(param2.compute_moment(0, np.zeros((m, 1))))
-    # qt_and_moment_error_ani(0, np.sqrt(2), param2)
+    # qt_and_moment_error_ani(0, np.sqrt(2), param1)
     # print(param2.gradV(100*np.ones((m, 1)), np.zeros((m, 1))))
 
     # draw_particul_path(0, 1, param)
