@@ -133,7 +133,13 @@ def qt_and_moment_error_ani(mu_prop, var_prop, param):
     m1 = param.compute_moment(1, y)
     m2 = param.compute_moment(2, y)
 
-    # mu_y = (param.sigma)@A.T@(param.sigma_yx_inv)@y
+    if (isinstance(param, Simulation_Parameter_Gaussian_Mixture)):
+        sigma_i_inv = np.array([sigma_x_inv + A.T @ param.sigma_yx_inv @ A for sigma_x_inv in param.sigma_x_inv])
+        sigma_i = np.array([np.linalg.inv(sig_i_inv) for sig_i_inv in sigma_i_inv])
+        mu_y = np.array([sigma @ A.T @ param.sigma_yx_inv @ y + sigma@sigma_x_inv*mu for (sigma, sigma_x_inv, mu) in zip(sigma_i, param.sigma_x_inv, param.mu_x)])
+    elif (isinstance(param, Simulation_Parameter_Gaussian)):
+        mu_y = (param.sigma)@A.T@(param.sigma_yx_inv)@y
+
 
     fig, ax = plt.subplots(3, 2, figsize = (15, 9))
     line1, = ax[0, 0].plot([], [], lw=2)
@@ -168,6 +174,14 @@ def qt_and_moment_error_ani(mu_prop, var_prop, param):
     
         ax[0, 0].set_title(f"Gradient flow - Time: {frame * dt:.4f}")
         ax[0, 1].set_title(f"Langevin diffusion - Time: {frame * dt:.4f}")
+
+        if isinstance(param, Simulation_Parameter_Gaussian_Mixture):
+            for i, mu in enumerate(mu_y):
+                ax[0, 0].vlines(mu[0], 0, 10, color='black', linestyle="--", label=rf'$\mu_{{y,{i+1}}}$')
+                ax[0, 1].vlines(mu[0], 0, 10, color='black', linestyle="--", label=rf'$\mu_{{y,{i+1}}}$')
+        elif isinstance(param, Simulation_Parameter_Gaussian):
+            ax[0, 0].vlines(mu_y[0], 0, 10, color = 'black', label = r'$\mu_y$', linestyle = "--")
+            ax[0, 1].vlines(mu_y[0], 0, 10, color = 'black', label = r'$\mu_y$', linestyle = "--")
 
         # ax[0, 0].vlines(mu_y, 0, 10, color = 'black', label = r'$\mu_y$', linestyle = "--")
         # ax[0, 1].vlines(mu_y, 0, 10, color = 'black', label = r'$\mu_y$', linestyle = "--")
@@ -487,7 +501,13 @@ def display_qt(mu_prop, var_prop, param):
     xt = param.gradient_flow(x0, y)
     qt = param.compute_qt(mu_prop, var_prop, xt, y)
 
-
+    if (isinstance(param, Simulation_Parameter_Gaussian_Mixture)):
+        sigma_i_inv = np.array([sigma_x_inv + A.T @ param.sigma_yx_inv @ A for sigma_x_inv in param.sigma_x_inv])
+        sigma_i = np.array([np.linalg.inv(sig_i_inv) for sig_i_inv in sigma_i_inv])
+        mu_y = np.array([sigma @ A.T @ param.sigma_yx_inv @ y + sigma@sigma_x_inv*mu for (sigma, sigma_x_inv, mu) in zip(sigma_i, param.sigma_x_inv, param.mu_x)])
+    elif (isinstance(param, Simulation_Parameter_Gaussian)):
+        mu_y = (param.sigma)@A.T@(param.sigma_yx_inv)@y
+        
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     line, = ax.plot([], [], lw=2)
@@ -499,7 +519,14 @@ def display_qt(mu_prop, var_prop, param):
         qt_sorted = qt[0, sorted_idx, frame]
         xt_sorted = xt[0, sorted_idx, frame]
 
+        if (isinstance(param, Simulation_Parameter_Gaussian)):
+            ax.vlines(mu_y[0], 0, 10, color = 'black', label = r'$\mu_y$', linestyle = "--")
+        elif (isinstance(param, Simulation_Parameter_Gaussian_Mixture)):
+            for i, mu in enumerate(mu_y):
+                ax.vlines(mu[0], 0, 10, color='black', linestyle="--", label=rf'$\mu_{{y,{i+1}}}$')
+
         ax.plot(xt_sorted, qt_sorted, marker = "x", color = "k", label = r"$\tilde{q}_y^t(x_t)$ ")
+
         ax.set_title("t = {:.3f}".format(param.dt*frame))
         ax.set_xlim(-3, 3)
         ax.legend()
@@ -590,11 +617,11 @@ if __name__ == "__main__":
 
     param1 = Simulation_Parameter_Gaussian(nStep, N, dt, n, m, A, var_x, var_yx)
 
-    draw_particul_path(0, 1, param1)
-    display_qt(0, 1, param1)
-    merged_IP_ratio(0, 1, param1)
-    error_moments_vs_N(0, 1, param1)
-    qt_and_moment_error_ani(0, 1, param1)
+    # draw_particul_path(0, 1, param1)
+    # display_qt(0, 1, param1)
+    # merged_IP_ratio(0, 1, param1)
+    # error_moments_vs_N(0, 1, param1)
+    # qt_and_moment_error_ani(0, 1, param1)
 
     #---------------------------------------------------------
     # Mixture of Gaussian Case
