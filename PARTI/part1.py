@@ -573,11 +573,6 @@ def error_moments_vs_N(mu_prop, var_prop, param):
     fig.text(.685, .92, "Moment 2", fontweight = 'bold', fontsize = 15)
     plt.show()
 
-    
-
-
-
-
 
 if __name__ == "__main__":
 
