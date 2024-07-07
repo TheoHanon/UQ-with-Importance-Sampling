@@ -522,7 +522,7 @@ def error_moments_vs_N(mu_prop, var_prop, param):
     A = param.A
 
     
-    xtrue = np.random.normal(0, np.sqrt(var_x), (n, 1)) # true x
+    xtrue = np.random.normal(0, 1, (n, 1)) # true x
     noise = np.random.normal(0, np.sqrt(var_yx), (m, 1))
     y = A @ xtrue + noise # y = Ax + n
 
@@ -575,8 +575,11 @@ def error_moments_vs_N(mu_prop, var_prop, param):
 
 
 if __name__ == "__main__":
-
-    nStep = 1000
+    
+    #---------------------------------------------------------
+    # Gaussian Case 
+    # It is very fast you can try with a lot of sample and steps
+    nStep = 1000 
     N = 1000
     dt = 1e-2   
     n = 1
@@ -584,52 +587,37 @@ if __name__ == "__main__":
     var_x = 1.0/np.sqrt(2)
     var_yx = 1.0/np.sqrt(2)  
     A = np.eye(m, n)
+
     param1 = Simulation_Parameter_Gaussian(nStep, N, dt, n, m, A, var_x, var_yx)
+
+    draw_particul_path(0, 1, param1)
+    display_qt(0, 1, param1)
+    merged_IP_ratio(0, 1, param1)
     error_moments_vs_N(0, 1, param1)
-    # merged_IP_ratio(0, 2, param1)
-    # display_qt(0, 1, param)
+    qt_and_moment_error_ani(0, 1, param1)
+
+    #---------------------------------------------------------
+    # Mixture of Gaussian Case
+    # It is very slow because of the automatic differentiation
 
     weight = np.array([.25, .5, .25])
     mu = np.array([-1, 0, 1])
-    sigma = np.array([.1, .2, .1])
+    sigma = np.array([.1, .1, .1])
 
-    # param2 = Simulation_Parameter_Gaussian_Mixture(nStep, N, dt, n, m, A, weight, mu, sigma, var_yx)
-    # print(param2.compute_moment(0, np.zeros((m, 1))))
-    # qt_and_moment_error_ani(0, np.sqrt(2), param1)
-    # print(param2.gradV(100*np.ones((m, 1)), np.zeros((m, 1))))
+    nStep = 100
+    N = 100
+    dt = 1e-2   
+    n = 1
+    m = 1
+    var_x = 1.0/np.sqrt(2)
+    var_yx = 1.0/np.sqrt(2)  
+    A = np.eye(m, n)
 
-    # draw_particul_path(0, 1, param)
-    # display_qt(0, 1, param2)
-    # x = np.linspace(-5, 5, 100).reshape(1, -1)
-    # p1 = param1.p_xy(x, np.zeros((m, 1)))
-    # p2 = param2.p_xy(x, np.zeros((m, 1)))
-    # print(p1.shape, p2.shape)
+    param2 = Simulation_Parameter_Gaussian_Mixture(nStep, N, dt, n, m, A, weight, mu, sigma, var_yx)
 
-    # print(compute_moment(0, np.ones((m, 1)), param2))
-
-    # plt.plot(x.reshape(-1), p.reshape(-1))
-    # plt.show()
+    # draw_particul_path(0, 2, param2)
+    # display_qt(0, 2, param2)
+    qt_and_moment_error_ani(0, 2, param2)
 
 
-    # f = lambda x: x[0]**2 + x[1]**2
-    # x = np.array([[1, 1], [2, 2]], dtype = np.float64).reshape(2, 3)
-# 
-    # div = param.div(f, x)
-    # plt.plot(x.reshape(-1), div.reshape(-1))
-    # plt.hlines(0, -5, 5, color = 'red')
-    # plt.show()
 
-# 
-    # x = np.linspace(-5, 5, 100).reshape(1, -1)
-    # gradV =  param.gradV(x, np.zeros((m, 1)))
-    # gradV2 = param.gradV2(x, np.zeros((m, 1)))
-    # p = param.p_yx(np.zeros((m, 1)), x) * param.p_x(x)
-    
-    # plt.plot(x.reshape(-1), gradV.reshape(-1))
-    # plt.plot(x.reshape(-1), gradV2.reshape(-1))
-    # plt.hlines(0, -5, 5, color = 'red')
-    # plt.show()
-
-    # display_qt(0, 2, param)
-    # perfect_IP(0, 1, param)
-    # merged_IP_ratio(0, 1, param)
