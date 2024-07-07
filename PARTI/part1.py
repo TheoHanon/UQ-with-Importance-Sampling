@@ -310,7 +310,7 @@ def merged_IP_ratio(mu_prop, var_prop, param):
     x_pred = param.gradient_flow(x0, y)
 
     qt_sample = np.empty((n, N, nStep))
-    qt_pred = param.compute_qt(mu_prop, var_prop, x_pred, y, param)
+    qt_pred = param.compute_qt(mu_prop, var_prop, x_pred, y)
     qt_no_resampling = np.empty((n, N, nStep))
 
     ratio = np.empty((n, nStep))
@@ -521,16 +521,16 @@ if __name__ == "__main__":
     var_yx = 1.0/np.sqrt(2)  
     A = np.eye(m, n)
     param1 = Simulation_Parameter_Gaussian(nStep, N, dt, n, m, A, var_x, var_yx)
-    
+    merged_IP_ratio(0, 1, param1)
     # display_qt(0, 1, param)
 
     weight = np.array([.25, .5, .25])
     mu = np.array([-1, 0, 1])
     sigma = np.array([.1, .2, .1])
 
-    param2 = Simulation_Parameter_Gaussian_Mixture(nStep, N, dt, n, m, A, weight, mu, sigma, var_yx)
+    # param2 = Simulation_Parameter_Gaussian_Mixture(nStep, N, dt, n, m, A, weight, mu, sigma, var_yx)
     # print(param2.compute_moment(0, np.zeros((m, 1))))
-    qt_and_moment_error_ani(0, np.sqrt(2), param2)
+    # qt_and_moment_error_ani(0, np.sqrt(2), param2)
     # print(param2.gradV(100*np.ones((m, 1)), np.zeros((m, 1))))
 
     # draw_particul_path(0, 1, param)
