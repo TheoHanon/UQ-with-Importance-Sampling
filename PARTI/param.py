@@ -2,8 +2,7 @@
 # Created : 2024-07-05
 
 import numpy as np
-from scipy.integrate import quad
-from autograd import elementwise_grad, jacobian
+from scipy.integrate import nquad
 import matplotlib.animation as animation
 from matplotlib import pyplot as plt
 import tqdm
@@ -32,13 +31,27 @@ class Simulation_Parameter:
         Transformation matrix.
     """
     
-    def __init__(self, nStep: int, N: int, dt: float, n: int, m: int, A: np.ndarray):
+    def __init__(self, y:float, nStep: int, N: int, dt: float, n: int, m: int, A: np.ndarray, mu_prop: np.ndarray, sigma_prop: np.ndarray, uniform : bool = False, a_unif : float = 2):
+        self.y = y
         self.nStep = nStep
         self.N = N
         self.dt = dt    
         self.n = n
         self.m = m
         self.A = A
+
+        self.mu_prop = mu_prop
+        self.sigma_prop = sigma_prop
+        self.sigma_prop_inv = np.linalg.inv(sigma_prop)
+        self.sigma_prop_det = np.linalg.det(sigma_prop)
+
+        self.uniform = uniform
+        self.a_unif = a_unif
+
+        if not uniform:
+            self.x0 = np.random.multivariate_normal(mu_prop, sigma_prop, N)
+        else :
+            self.x0 = np.random.uniform([-a_unif]*n, [a_unif]*n, (N, n))
 
 
     def div(self, f, x):
@@ -59,17 +72,17 @@ class Simulation_Parameter:
 
         """
 
-        jac_f = jax.jacobian(f)
+        jac_f = jax.jacfwd(f)
         jac_matrix = jac_f(x)
+        # print(jac_matrix.shape)
 
         if self.n == 1:
             return np.diag(jac_matrix.squeeze())
         else:
-            div = jnp.trace(jac_matrix, axis1=0, axis2=1)
+            div = jnp.trace(jnp.diagonal(jac_matrix, axis1=0, axis2=2).T, axis1=1, axis2 =2)
             return div
     
-
-    def gradient_flow(self, x0, y):
+    def gradient_flow(self):
         """
         Compute the gradient flow of a function V at point x0.
 
@@ -88,21 +101,21 @@ class Simulation_Parameter:
             Particles postion xt following the gradient flow.
         
         """
-
-        n = self.n
         N = self.N
+        n = self.n
         nStep = self.nStep
         dt = self.dt
 
-        x = np.empty((n, N, nStep))
-        x[..., 0] = x0
+        x = np.empty((nStep, N, n))
+        x[0] = self.x0
 
         for i in range(nStep-1):
-            x[..., i+1] = x[..., i] - self.gradV(x[..., i], y) * dt
+            x[i+1] = x[i] - self.gradV(x[i]) * dt
 
         return x
-
-    def langevin_sampling(self, x0, y, D = 10):
+    
+    
+    def langevin_sampling(self, D = 10):
         """
         Compute the langevin diffusion of a function V at point x0.
 
@@ -128,16 +141,16 @@ class Simulation_Parameter:
         nStep = self.nStep
         dt = self.dt
 
-        x = np.empty((n, N, nStep))
-        x[..., 0] = x0
+        x = np.empty((nStep, N, n))
+        x[0] = self.x0
 
         for i in range(nStep-1):
-            x[..., i+1] = x[..., i] - self.gradV(x[..., i], y) * dt + np.random.normal(0, 1, (n, N)) * np.sqrt(2*D*dt)
+            x[i+1, ...] = x[i, ...] - self.gradV(x[i, ...]) * dt + np.random.normal(0, 1, n) * np.sqrt(2*D*dt)
 
         return x
     
 
-    def compute_qt(self, mu_prop, var_prop, xpred, y):
+    def compute_qt(self, xt):
         """
         Compute the importance weights qt for a given proposal distribution.
 
@@ -149,10 +162,6 @@ class Simulation_Parameter:
             Variance of the proposal distribution.
         xpred : np.array
             Particles position.
-        y : np.array
-            The observation.
-        param : Simulation_Parameter
-            Parameters of the simulation.
         
         Returns:
         -------
@@ -166,26 +175,32 @@ class Simulation_Parameter:
         nStep = self.nStep
         dt = self.dt
 
-        f = lambda x:  -self.gradV(x, y) 
-        qt = np.zeros((n, N, nStep))
+    
+        f = lambda x:  -self.gradV(x) 
+        qt = np.zeros((nStep, N))
 
-        qt[..., 0] = 1/((2*np.pi)**(n/2)*np.sqrt(var_prop)) * np.exp(-0.5 * (xpred[...,0] - mu_prop)**2 / var_prop)
+        diff = xt[0, :] - self.mu_prop
+        if not self.uniform:
+            qt[0, :] = 1/((2*np.pi)**(n/2)*np.sqrt(self.sigma_prop_det)) * np.exp(-0.5 * np.einsum('ij, ij->i', np.dot(diff, self.sigma_prop_inv), diff))
+        else:
+            qt[0, :] = 1/(2*self.a_unif)**(self.n) * np.ones(N)
 
-        I = np.zeros((n, N))
+        I = np.zeros(N)
 
         for k in tqdm.tqdm(range(1, nStep)):
-            xold = xpred[..., k-1]
-            xnew = xpred[..., k]
+            xold = xt[k-1, ...]
+            xnew = xt[k, ...]
         
-            diva = self.div(f, xold)
-            divb = self.div(f, xnew)
+            diva = self.div(f, (xold))
+            divb = self.div(f, (xnew))
 
             I += dt * (diva + divb) / 2
-            qt[..., k] = qt[..., 0] * np.exp(-I)
+            qt[k, :] = qt[0, :] * np.exp(-I)
 
         return qt
     
-    def compute_moment(self, alpha:int, y):
+    
+    def compute_moment(self, alpha:int):
         """
         Compute the exact moment of the posterior distribution.
 
@@ -205,10 +220,18 @@ class Simulation_Parameter:
 
         """
 
-        f = lambda x: np.array(x**alpha * self.p_xy(np.array([[x]]), y))
-        return quad(f, -np.inf, np.inf)[0]
+        m = np.zeros(self.n)
+
+        for i in range(self.n):
+            def f(*x) :
+                x_vec = np.array(x)
+                return np.array(np.prod(x_vec[i]**alpha) * self.p_xy(np.array([x_vec]), self.y))
+            m[i] = nquad(f, [(-np.inf, np.inf)]*self.n)[0]
+       
+        return m
+
     
-    def compute_moment_IP(self, alpha:int, xpred, qt, y):
+    def compute_moment_IP(self, alpha:int, xt, qt):
         """
         Compute the moment of the posterior distribution using importance sampling with normalization.
 
@@ -231,14 +254,15 @@ class Simulation_Parameter:
             The moment of the posterior distribution using importance sampling with normalization.    
         """
 
-        f = lambda x : x**alpha
-        p_post = np.array(self.p_xy(xpred, y)).reshape(1, -1)
-        qt = np.array(qt)
+        def f(x):
+            return x**alpha
+
+        p_post = self.p_xy(xt, self.y)
         
-        w = (p_post / qt) / np.sum(p_post/qt, axis = 1)
-        # print(xpred.shape, p_post.shape, qt.shape, w.shape)
-    
-        return np.sum((f(xpred) * w), axis = 1)
+        w = (p_post / qt) / np.sum(p_post / qt)
+   
+  
+        return np.sum(f(xt) * w[:, np.newaxis], axis =0)
     
 
     def p_x(self, x):
@@ -257,9 +281,6 @@ class Simulation_Parameter:
         raise NotImplementedError("Not implemented")
     
 
-
-
-
 class Simulation_Parameter_Gaussian(Simulation_Parameter):
 
     """
@@ -273,12 +294,15 @@ class Simulation_Parameter_Gaussian(Simulation_Parameter):
         Variance for y given x.
     """
 
-    def __init__(self, nStep: int, N: int, dt: float, n: int, m: int, A: np.ndarray, var_x: float, var_yx: float):
-        super().__init__(nStep, N, dt, n, m, A)
-        self.var_x = var_x
-        self.var_yx = var_yx
-
+    def __init__(self, y:float, nStep: int, N: int, dt: float, n: int, m: int, A: np.ndarray, mu_prop : np.ndarray, sigma_prop: np.ndarray, sigma_x: np.ndarray, sigma_yx: np.ndarray, uniform : bool = False, a_unif : float = 2):
+        super().__init__(y, nStep, N, dt, n, m, A, mu_prop, sigma_prop, uniform, a_unif)
+        self.sigma_x = sigma_x
+        self.sigma_yx = sigma_yx
         self._init_gaussian()
+
+        self.xt = self.gradient_flow()
+        self.qt = self.compute_qt(self.xt)
+
 
     def _init_gaussian(self):
         """
@@ -295,11 +319,9 @@ class Simulation_Parameter_Gaussian(Simulation_Parameter):
         m : int
             Dimensionality of y.
         """
-        self.sigma_x = self.var_x * np.eye(self.n) 
         self.sigma_x_inv = np.linalg.inv(self.sigma_x)
         self.sigma_x_det = np.linalg.det(self.sigma_x)
 
-        self.sigma_yx = self.var_yx * np.eye(self.m) 
         self.sigma_yx_inv = np.linalg.inv(self.sigma_yx) 
         self.sigma_yx_det = np.linalg.det(self.sigma_yx)
 
@@ -311,39 +333,39 @@ class Simulation_Parameter_Gaussian(Simulation_Parameter):
         self.sigma = np.linalg.inv(self.sigma_inv)
         self.sigma_det = np.linalg.det(self.sigma)
 
+        self.mu_xy = self.sigma * (self.A).T @ self.sigma_yx_inv @ self.y
+
     def p_x(self, x):
         p = 1/((2*np.pi)**(self.n/2)) \
                 * 1/np.sqrt(self.sigma_x_det) \
-                    * np.exp(-0.5 * np.einsum("ij, ji->i",x.T, self.sigma_x_inv @ x))
+                    * np.exp(-0.5 * np.einsum('ij, ij->i', np.dot(x, self.sigma_x_inv), x))
         return  p
 
     def p_yx(self, y, x):
+        diff = y - np.dot(x, self.A.T) #because x is (N, n)
         p = 1/((2*np.pi)**(self.m/2)) \
                 * 1/np.sqrt(self.sigma_yx_det) \
-                        * np.exp(-0.5 * np.einsum("ij, ji->i",(y - self.A @ x).T, self.sigma_yx_inv @ (y - self.A @ x)))
+                        * np.exp(-0.5 * np.einsum("ij, ij->i",np.dot(diff, self.sigma_yx_inv), diff))
 
         return p
-
 
     def p_y(self, y):
         p = 1/((2*np.pi)**(self.m/2)) \
                 * 1/np.sqrt(self.sigma_y_det) \
-                        * np.exp(-0.5 * np.einsum("ij, ji->i",y.T, self.sigma_y_inv @ y))
+                        * np.exp(-0.5 * np.dot(np.dot(y, self.sigma_y_inv), y))
         return p
-
 
     def p_xy(self, x, y):
         p = self.p_yx(y, x) * self.p_x(x) / self.p_y(y)
-        # print(np.info(p))
-        return p.reshape(-1)
-    
-        
-    def gradV(self, x, y):
-        gradV =  self.sigma_inv @ x - (self.A).T @ self.sigma_yx_inv @ y
-        return gradV
+        return p
     
 
-    def compute_qt(self, mu_prop, var_prop, xpred, y):
+    def gradV(self, x):
+        gradV =  np.dot(x, self.sigma_inv.T) - np.dot(self.A.T, np.dot(self.sigma_yx_inv, self.y))
+
+        return gradV
+    
+    def compute_qt(self, xt):
         """
         Compute the importance weights qt for a given proposal distribution.
 
@@ -372,23 +394,22 @@ class Simulation_Parameter_Gaussian(Simulation_Parameter):
         nStep = self.nStep
         dt = self.dt
 
-        f = lambda x:  -self.gradV(x, y) ## set y = 0 for simplicity
-        qt = np.zeros((n, N, nStep))
+        qt = np.zeros((nStep, N))
+        I = np.zeros(N)
 
-        qt[..., 0] = 1/((2*np.pi)**(n/2)*np.sqrt(var_prop)) * np.exp(-0.5 * (xpred[...,0] - mu_prop)**2 / var_prop)
+        if not self.uniform:
+            diff = xt[0, :] - self.mu_prop
+            qt[0, :] = 1/((2*np.pi)**(n/2)*np.sqrt(self.sigma_prop_det)) * np.exp(-0.5 * np.einsum('ij, ij->i', np.dot(diff, self.sigma_prop_inv), diff))
+        else:
+            qt[0, :] = 1/(2*self.a_unif)**(self.n) * np.ones(N)
 
-        I = np.zeros((n, N))
-
-        for k in tqdm.tqdm(range(1, nStep)):
-            xold = xpred[..., k-1]
-            xnew = xpred[..., k]
-            
+        for k in range(1, nStep):
             diva = -np.trace(self.sigma_inv)
             divb = -np.trace(self.sigma_inv)
 
             I += dt * (diva + divb) / 2
-            qt[..., k] = qt[..., 0] * np.exp(-I)
-
+            qt[k, :] = qt[0, :] * np.exp(-I)
+            
         return qt
 
 
@@ -410,76 +431,86 @@ class Simulation_Parameter_Gaussian_Mixture(Simulation_Parameter):
         Variance for y given x.
     """
 
-    def __init__(self, nStep: int, N: int, dt: float, n: int, m: int, A : np.ndarray, weight: np.ndarray, mu_x: np.ndarray, var_x: np.ndarray, var_yx: np.ndarray):
+    def __init__(self, y:float, nStep: int, N: int, dt: float, n: int, m: int, A : np.ndarray, mu_prop:np.ndarray, sigma_prop : np.ndarray, weight: np.ndarray, sigma_x: np.ndarray, mu_yx: np.ndarray, sigma_yx: np.ndarray, uniform : bool = False, a_unif : float = 2):
 
-        super().__init__(nStep, N, dt, n, m, A)
+        super().__init__(y, nStep, N, dt, n, m, A, mu_prop, sigma_prop, uniform, a_unif)
 
-        self.weight = weight    
-        self.mu_x = mu_x
-        self.var_yx = var_yx
-        self.var_x = var_x
-        
+        self.weight = weight 
 
+        self.mu_yx = mu_yx
+        self.sigma_yx = sigma_yx
+
+        self.sigma_x = sigma_x
+        self.y = y
+        self.mu_prop = mu_prop
+        self.sigma_prop = sigma_prop
+
+        self.x0 = np.random.multivariate_normal(mu_prop, sigma_prop, N)
         self._init_gaussian_mixture()
+
+        self.xt = self.gradient_flow()
+        self.qt = self.compute_qt(self.xt)
 
 
     def _init_gaussian_mixture(self):
 
-        self.sigma_x = np.array([var * np.eye(self.n) for var in self.var_x])
-        self.sigma_x_inv = np.array([np.linalg.inv(sigma) for sigma in self.sigma_x])
-        self.sigma_x_det = np.array([np.linalg.det(sigma) for sigma in self.sigma_x])
+        self.sigma_yx_inv = np.array([np.linalg.inv(sigma) for sigma in self.sigma_yx])
+        self.sigma_yx_det = np.array([np.linalg.det(sigma) for sigma in self.sigma_yx])
 
-        self.sigma_yx = np.eye(self.m) * self.var_yx
-        self.sigma_yx_inv = np.linalg.inv(self.sigma_yx)
-        self.sigma_yx_det = np.linalg.det(self.sigma_yx)
+        self.sigma_x_inv = np.linalg.inv(self.sigma_x)
+        self.sigma_x_det = np.linalg.det(self.sigma_x)
 
-        self.sigma_y = np.array([self.sigma_yx + self.A @ sigma_x @ self.A.T for sigma_x in self.sigma_x])
+        self.sigma_y = np.array([sigma_yx + self.A @ self.sigma_x @ self.A.T for sigma_yx in self.sigma_yx])
         self.sigma_y_inv = np.array([np.linalg.inv(sigma) for sigma in self.sigma_y])
         self.sigma_y_det = np.array([np.linalg.det(sigma) for sigma in self.sigma_y])
 
+        self.sigma_inv = np.array([self.sigma_x_inv + (self.A).T @ sigma_yx_inv @ self.A for sigma_yx_inv in self.sigma_yx_inv])
+        self.sigma = np.array([np.linalg.inv(sigma) for sigma in self.sigma_inv])
+        self.sigma_det = np.array([np.linalg.det(sigma) for sigma in self.sigma])
+        self.mu_xy = np.array([sigma @ (self.A).T @ sigma_yx_inv @ (self.y - mu_yx)  for (sigma, sigma_yx_inv, mu_yx) in zip(self.sigma, self.sigma_yx_inv, self.mu_yx)])
+        
+
     def p_x(self, x):
-        p = jnp.zeros_like(x)  
-        for w, mu, det, sigma_inv in zip(self.weight, self.mu_x, self.sigma_x_det, self.sigma_x_inv):
-            diff = x - mu  
-            exponent = -0.5 * jnp.einsum("ij,ji->i", diff.T, sigma_inv @ diff)
-            p += w * 1/((2*jnp.pi)**(self.n/2)) * 1/jnp.sqrt(det) * jnp.exp(exponent)
-        return p
+        exponent = -.5 * jnp.einsum("ij,ij->i", jnp.dot(x, self.sigma_x_inv), x)
+        return 1/((2*jnp.pi)**(self.n/2)) * 1/jnp.sqrt(self.sigma_x_det) * jnp.exp(exponent)
 
     def p_yx(self, y, x):
-        diff = y - self.A @ x 
-        exponent = -0.5 * jnp.einsum("ij,ji->i", diff.T, self.sigma_yx_inv @ diff).reshape(self.n, -1)
-        p = 1/((2*jnp.pi)**(self.m/2)) * 1/jnp.sqrt(self.sigma_yx_det) * jnp.exp(exponent)
+        p = jnp.zeros(x.shape[0])
+        for w, mu_yx, sigma_yx_inv, sigma_yx_det in zip(self.weight, self.mu_yx, self.sigma_yx_inv, self.sigma_yx_det):
+            diff = y - jnp.dot(x, self.A.T) - mu_yx
+            exponent = -0.5 * jnp.einsum("ij,ij->i", jnp.dot(diff, sigma_yx_inv), diff)
+            p += w * 1/((2*jnp.pi)**(self.m/2)) * 1/jnp.sqrt(sigma_yx_det) * jnp.exp(exponent)
+
         return p
+    
 
     def p_y(self, y):
-        p = jnp.zeros_like(y)
-        for w, mu, sigma_y_inv, sigma_y_det in zip(self.weight, self.mu_x, self.sigma_y_inv, self.sigma_y_det):
-            diff = y - self.A * mu #here mu is 1d : TO CHANGE 
-            exponent = -0.5 * jnp.einsum("ij,ji->i", diff.T, sigma_y_inv @ diff)
-
-            p += w * 1/((2*jnp.pi)**(self.m/2)) * 1/jnp.sqrt(sigma_y_det) * jnp.exp(exponent)
+        p = 0
+        for w, mu, sigma_y_inv, sigma_y_det in zip(self.weight, self.mu_yx, self.sigma_y_inv, self.sigma_y_det):
+            diff = y + mu
+            exponent = -0.5 * jnp.dot(jnp.dot(diff, sigma_y_inv), diff)
+            p += (w * 1/((2*jnp.pi)**(self.m/2)) * 1/jnp.sqrt(sigma_y_det) * jnp.exp(exponent))
+        
         return p
     
-    def p_xy(self, x, y):
+    def p_xy(self, x, y):  
         p = self.p_yx(y, x) * self.p_x(x) / self.p_y(y)
-        return p.reshape(-1)
-    
-    def gradx_p_x(self, x):
-        grad = jnp.zeros_like(x)
-        for w, mu, det, sigma_inv in zip(self.weight, self.mu_x, self.sigma_x_det, self.sigma_x_inv):
-            diff = x - mu
-            grad += w * sigma_inv @ diff * jnp.exp(-0.5 * jnp.einsum("ij,ji->i", diff.T, sigma_inv @ diff)) * 1/((2*jnp.pi)**(self.n/2) * jnp.sqrt(det))
-        return grad
-    
-    def gradx_p_yx(self, y, x):
-        grad = -self.A.T@self.sigma_yx_inv@(y - self.A@x) * jnp.exp(-0.5 * jnp.einsum("ij,ji->i", (y - self.A@x).T, self.sigma_yx_inv@(y - self.A@x))) * 1/((2*jnp.pi)**(self.m/2) * jnp.sqrt(self.sigma_yx_det))
-        return grad
+        return p
+                      
         
-    def gradV(self, x, y):
-        num = self.gradx_p_x(x) * self.p_yx(y, x) + self.gradx_p_yx(y, x)*self.p_x(x)
-        den = jnp.clip(self.p_yx(y, x)*self.p_x(x), 1e-15, None)
+    def gradV(self, x):
+        num = jnp.zeros_like(x)
+        den = jnp.zeros_like(x)
+        for w, mu_xy, sigma_inv, sigma_det in zip(self.weight, self.mu_xy, self.sigma_inv, self.sigma_det):
+            p = 1/((2*np.pi)**(self.n/2)) * 1/np.sqrt(sigma_det) * jnp.exp(-0.5 * jnp.einsum('ij, ij->i', jnp.dot(x-mu_xy, sigma_inv), x-mu_xy))
+            dp = -jnp.dot(x, sigma_inv.T) + jnp.dot(sigma_inv, mu_xy)
+            num += w * p[:, None] * dp
+            den += w * p[:, None]
 
-        return num/den
+        den = jnp.clip(den, 1e-16, None)
+
+        return - num / den
+
     
     
 
