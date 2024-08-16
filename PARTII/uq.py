@@ -37,50 +37,8 @@ gw = NN(n, m, 20, 1)
 print("d = ", gw.get_params_count())
 
 model = Model(Y_train, X_train, gw = gw, prior_bounds = bounds, scale_likelihood=1e0)
-# flow1 = GradientFlow(N = N, nStep = nStep, dt = 1e-2, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2))
-# flow2 = MixFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 5*1e-3)
-flow3 = SplitStepFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 1e-2, burn_in = nStep, sigma0=1e-4)
-
-# q = np.exp(flow.getlogQ(numpy = True))
-# w = flow.getFlow(numpy = True)
-# print(np.min(w), np.max(w))
-# fig, ax  = plt.subplots(2, 2)
-
-# def update(frame):
-
-#     for a in ax.flatten():
-#         a.clear()
-
-#     # ax[0, 0].tricontourf(w[frame, :, 0], w[frame, :, 1], model.logP(torch.tensor(w[frame])), levels = 10)
-#     ax[0, 0].scatter(w[frame, :, 0], w[frame, :, 1], c = q[frame], cmap = "coolwarm")
-#     ax[0, 0].set_xlabel("w1")
-#     ax[0, 0].set_ylabel("w2")
-#     ax[0, 0].set_xlim(-10, 10)
-#     ax[0, 0].set_ylim(-10, 10)
-
-#     # ax[0, 1].tricontourf(w[frame, :, 2], w[frame, :, 3], model.logP(torch.tensor(w[frame])), levels = 10)
-#     ax[0, 1].scatter(w[frame, :, 2], w[frame, :, 3], c = q[frame], cmap = "coolwarm")
-#     ax[0, 1].set_xlabel("w3")
-#     ax[0, 1].set_ylabel("w4")
-#     ax[0, 1].set_xlim(-10, 10)
-#     ax[0, 1].set_ylim(-10, 10)
-
-#     # ax[1, 0].tricontourf(w[frame, :, 0], w[frame, :, 2], model.logP(torch.tensor(w[frame])), levels = 10)
-#     ax[1, 0].scatter(w[frame, :, 0], w[frame, :, 2], c = q[frame], cmap = "coolwarm")
-#     ax[1, 0].set_xlabel("w1")
-#     ax[1, 0].set_ylabel("w3")
-#     ax[1, 0].set_xlim(-10, 10)
-#     ax[1, 0].set_ylim(-10, 10)
-
-#     # ax[1, 1].tricontourf(w[frame, :, 3], w[frame, :, 1], model.logP(torch.tensor(w[frame])), levels = 10)
-#     ax[1, 1].scatter(w[frame, :, 3], w[frame, :, 1], c = q[frame], cmap = "coolwarm")
-#     ax[1, 1].set_xlabel("w4")
-#     ax[1, 1].set_ylabel("w2")
-#     ax[1, 1].set_xlim(-10, 10)
-#     ax[1, 1].set_ylim(-10, 10)
-
-# ani = animation.FuncAnimation(fig, update, frames=nStep, repeat=False, interval=1)
-# plt.show()
+flow3 = MixFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 5*1e-3)
+# flow3 = HamiltonFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 1e-3)
 
 
 def g_opt(x, W):
@@ -91,6 +49,13 @@ def g_opt(x, W):
 
 
 def plot1():
+
+    flow1 = GradientFlow(N = N, nStep = nStep, dt = 1e-2, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2))
+    flow2 = MixFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 5*1e-3)
+    # flow3 = SplitStepFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 1e-2, burn_in = nStep, sigma0=1e-4)
+    flow3 = HamiltonFlow(N = N, nStep = nStep, dt = 1e-1, model = model, pre_compute=True, q0 = torch.distributions.Uniform(-2, 2), k = 1e-3)
+
+
 
     x = np.linspace(-1, 1, 50)
 
@@ -205,7 +170,7 @@ def plot2(flow):
         ax1.set_ylim(-2, 3)
         ax1.plot(x_test.squeeze(), g(x_test.squeeze()), label = "True function", color = "r")
         ax1.legend()
-        ax1.set_title("Gradient flow")
+        ax1.set_title(f"{flow.__class__.__name__}")
 
     ani = animation.FuncAnimation(fig, update, frames=nStep, repeat=False, interval=10)
     plt.show()

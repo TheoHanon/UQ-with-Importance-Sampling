@@ -55,7 +55,7 @@ class NN(nn.Module):
 
         for layer in self.nn[:-1]:
             w = W[..., idx:idx + layer.input_features*layer.output_features + layer.output_features]
-            # x = nn.functional.relu(layer(x, W = w))        
+            # x = nn.functional.gelu(layer(x, W = w))        
             x = torch.sin(layer(x, W = w))
             idx += layer.input_features*layer.output_features + layer.output_features
 

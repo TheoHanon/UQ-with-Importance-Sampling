@@ -339,7 +339,7 @@ class HamiltonFlow(Flow):
         """
                 
         if M_inv is None:
-            self.M_inv = torch.eye(model.n)
+            self.M_inv = torch.eye(model.d)
         else:
             self.M_inv = M_inv
 
@@ -359,23 +359,26 @@ class HamiltonFlow(Flow):
         logQ = torch.empty((self.nStep, self.N), dtype=torch.float64)
 
 
-        w[0] = self.q0.sample((self.N, self.model.n))
+        w[0] = self.q0.sample((self.N, self.model.d)).double()
         z[0] = w[0]
-        logQ[0] = self.q0.log_prob(z[0]).sum(dim = 1)
+        logQ[0] = self.q0.log_prob(z[0]).sum(dim = 1).double()
 
         momentum = torch.distributions.MultivariateNormal(loc = torch.zeros(self.model.d), precision_matrix = self.M_inv)
         normalDistribution = torch.distributions.MultivariateNormal(torch.zeros(self.model.d), torch.eye(self.model.d))
 
-        D_square_root = np.sqrt(self.k) * torch.eye(self.model.d)
-        D_inv = (1/self.k) * torch.eye(self.model.d)
+        D_square_root = np.sqrt(self.k) * torch.eye(self.model.d, dtype = torch.float64)
+        D_inv = (1/self.k) * torch.eye(self.model.d, dtype = torch.float64)
 
         with tqdm(total=self.nStep, desc="Hamilton flow") as pbar:
 
             for i in range(self.nStep - 1):
-                p0 = momentum.sample((self.N,)).double()
-                x_new, p_new = self.leapfrog(w[i], p0)
+                p0 = momentum.sample((self.N,)).double().requires_grad_(True)
+                w_compute = w[i].detach().clone().requires_grad_(True)
 
-                Ux_new = -self.model.logP(x_new)
+                w_new, p_new = self.leapfrog(w_compute, p0)
+                w_new = w_new.detach()
+
+                Ux_new = -self.model.logP(w_new)
                 Ux_old = -self.model.logP(w[i])
 
                 Kq_new = momentum.log_prob(p_new)
@@ -386,7 +389,7 @@ class HamiltonFlow(Flow):
                 u = torch.rand(self.N)
                 mask = u < alpha
 
-                w[i+1] = torch.where(mask[:, None], x_new, w[i])
+                w[i+1] = torch.where(mask[:, None], w_new, w[i])
 
                 eta = np.sqrt(2*self.dt) * D_square_root @ (normalDistribution.sample((self.N,)).T).double()
 
@@ -418,14 +421,14 @@ class HamiltonFlow(Flow):
         q = q.clone()
         p = p.clone()
 
-        p -= 0.5 * self.epsilon *(-self.model.grad_logP_XY(q))
+        p -= 0.5 * self.epsilon *(-self.model.grad_logP(q).detach())
 
         for _ in range(int(self.dt / self.epsilon)):
-            q += self.epsilon * torch.einsum("ij, kj -> ki", self.M_inv, p)
-            p -= self.epsilon * (-self.model.grad_logP_XY(q))
+            q += self.epsilon * torch.einsum("ij, kj -> ki", self.M_inv.double(), p)
+            p -= self.epsilon * (-self.model.grad_logP(q).detach())
 
-        q += self.epsilon * torch.einsum("ij, kj -> ki",self.M_inv, p)
-        p -= 0.5 * self.epsilon * (-self.model.grad_logP_XY(q))
+        q += self.epsilon * torch.einsum("ij, kj -> ki",self.M_inv.double(), p)
+        p -= 0.5 * self.epsilon * (-self.model.grad_logP(q).detach())
 
         return q, -p
 
