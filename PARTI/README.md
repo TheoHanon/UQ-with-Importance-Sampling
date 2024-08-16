@@ -4,7 +4,7 @@
 
 This part of the project is interested in the following problem:
 $$y = Ax + n$$
-where $A \in \mathbb{R}^{n \times m},~ y \in \mathbb{R}^m$, and finally,$x \sim \mathcal{N}(0, \Sigma_{x}), ~~~ \Sigma_{x} \in \mathbb{R}^{m \times m}$. We will consider two different scenarios for the distribution of $n$:
+where $A \in \mathbb{R}^{n \times m},~ y \in \mathbb{R}^m$, and finally, $x \sim \mathcal{N}(0, \Sigma_{x})$ with $\Sigma_{x} \in \mathbb{R}^{m \times m}$. We will consider two different scenarios for the distribution of $n$:
 1. $n \sim \mathcal{N}(0, \Sigma_{x|y})$ with $\Sigma_{x|y} \in \mathbb{R}^{n \times n}$
 2. $n \sim GMM(\mu_i, \Sigma_{y|x, i})$ with $\Sigma_{x|y, i} \in \mathbb{R}^{n \times n}$ and $\mu_i \in \mathbb{R}^n$
 
