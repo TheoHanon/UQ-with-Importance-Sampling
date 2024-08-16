@@ -40,12 +40,13 @@ class Model:
         self.Y_train = Y_train
         self.gw = gw
 
-        self.priorW = RobustUniform(prior_bounds[:, 0], prior_bounds[:, 1])   
+        self.priorW = RobustUniform(prior_bounds[:, 0], prior_bounds[:, 1], val_max = 1e2)   
         self.likelihood = torch.distributions.Normal(loc=0.0, scale=scale_likelihood)   
 
 
     def logP(self, w: torch.Tensor) -> torch.Tensor:       
-        logP_XY =  self.likelihood.log_prob(torch.sqrt(((self.Y_train - self.gw(self.X_train, W = w))**2).sum(dim = 2).mean(dim = 1))) #+ self.priorW.log_prob(w).sum() 
+        prior = self.priorW.log_prob(w).sum()
+        logP_XY =  self.likelihood.log_prob(torch.sqrt(((self.Y_train - self.gw(self.X_train, W = w))**2).sum(dim = 2).mean(dim = 1))) + prior
         return logP_XY
 
     def grad_logP(self, w: torch.Tensor) -> torch.Tensor:

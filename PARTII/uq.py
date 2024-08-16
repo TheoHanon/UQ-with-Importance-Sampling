@@ -22,7 +22,6 @@ def g(x):
 sigma_YX = 0.1
 n_YX = np.random.normal(0, np.sqrt(sigma_YX), (M, n), )
 
-
 x1 = torch.linspace(-.8, -0.2, M//2)
 x2 = torch.linspace(0.2,.8, M//2)
 X_train = torch.cat((x1, x2)).reshape(-1, 1).double()
