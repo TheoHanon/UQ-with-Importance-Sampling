@@ -1,4 +1,4 @@
-__all__ = ["estimator"]
+__all__ = ["estimator", "Flow", "Model", "NN"]
 
 from . import estimator
 
