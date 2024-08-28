@@ -5,7 +5,7 @@ from typing import Union, Tuple
 
 class Model:
 
-    def __init__(self, Y_train: Union[np.ndarray, tf.Tensor], X_train: Union[np.ndarray, tf.Tensor], gw: tf.keras.Model, prior : tfp.distributions.Distribution = tfp.distributions.Uniform(-1, 1), likelihood : tfp.distributions.Distribution = tfp.distributions.Normal(0, 1)):
+    def __init__(self, Y_train: Union[np.ndarray, tf.Tensor], X_train: Union[np.ndarray, tf.Tensor], gw: tf.keras.Model, prior : tfp.distributions.Distribution = tfp.distributions.Uniform(-1, 1), likelihood_std : float = 1):
         """
         Args:
         X_train, Y_train : Union[np.ndarray, tf.Tensor], size (M, n), (M, m) : Training sample
@@ -29,13 +29,12 @@ class Model:
         self.gw = gw
 
         self.prior = prior
-        self.likelihood = likelihood
+        self.likelihood_std = likelihood_std
 
     def logP(self, w: tf.Tensor) -> tf.Tensor:
         
         prior = tf.reduce_sum(self.prior.log_prob(w), axis = 1)
-        likelihood = self.likelihood.log_prob(tf.reduce_mean(tf.sqrt(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2)), axis = 1))
-        # likelihood = - tf.reduce_mean(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2), axis = 1) / (2 * self.likelihood.scale**2)
-        return likelihood #+ prior
+        likelihood = - tf.reduce_mean(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2), axis = 1) / (2 * self.likelihood_std**2)
+        return likelihood + prior
 
 

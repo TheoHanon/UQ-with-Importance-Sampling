@@ -27,10 +27,9 @@ class GradientFlow(Flow):
             progbar.update(i)
 
         for i in range(1, self.epochs):
-
+        
             self._w[i].assign(self._w[i-1] + self.lr*grad)
             grad = self.compute_grad(self._w[i])
-
             progbar.update(i+self.burn_in+1)
 
         return self._w
