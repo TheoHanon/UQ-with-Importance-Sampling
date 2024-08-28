@@ -55,6 +55,34 @@ class MonteCarlo(Estimator):
         return mean, var
     
 
+class WeightedMonteCarlo(MonteCarlo):
+
+    def estimate(self, x_pred: tf.Tensor):
+        """
+        Args:
+            x_pred: tf.Tensor, shape (B, n) : Input
+
+        Returns:
+            tf.Tensor, shape (nStep, B, m) : Mean of the samples
+        """
+        mean = np.zeros((self.nStep, x_pred.shape[0], self.model.m))
+        var  = np.zeros((self.nStep, x_pred.shape[0], self.model.m)) 
+        
+        for t in range(self.nStep):
+
+            y_pred = self.model.gw(x_pred, self.samples_weight[t])
+            logp = self.model.logP(self.samples_weight[t])
+            weights = tf.exp(logp - tf.reduce_logsumexp(logp, axis = 0))
+
+            mean[t] = tf.reduce_sum(y_pred * weights[:, None, None], axis = 0)
+            var[t]  = tf.reduce_sum((y_pred - mean[t][None, ...])**2 * weights[:, None, None], axis = 0)
+
+        mean = mean.squeeze()
+        var = var.squeeze()
+
+        return mean, var
+    
+
 class ImportanceSampling(Estimator):
 
     def __init__(self, logq: tf.Tensor, *args, **kwargs):
@@ -65,6 +93,7 @@ class ImportanceSampling(Estimator):
             raise ValueError("logq must have shape (nStep, M)")
 
         self.logq = logq
+        self.importance_weight = np.zeros((self.nStep, self.M))
 
     def estimate(self, x_pred : tf.Tensor):
 
@@ -76,10 +105,10 @@ class ImportanceSampling(Estimator):
 
             logp = self.model.logP(self.samples_weight[t])
             log_ratio = logp - self.logq[t]
-            importance_weight = tf.exp(log_ratio - tf.reduce_logsumexp(log_ratio, axis = 0)) # (M,)
+            self.importance_weight[t] = tf.exp(log_ratio - tf.reduce_logsumexp(log_ratio, axis = 0)) # (M,)
             
-            mean[t] = tf.reduce_sum(y_pred * importance_weight[:, None, None], axis = 0)
-            var[t]  = tf.reduce_sum((y_pred - mean[t][None, ...])**2 * importance_weight[:, None, None], axis = 0)
+            mean[t] = tf.reduce_sum(y_pred * self.importance_weight[t][:, None, None], axis = 0)
+            var[t]  = tf.reduce_sum((y_pred - mean[t][None, ...])**2 * self.importance_weight[t][:, None, None], axis = 0)
 
         mean = mean.squeeze()
         var = var.squeeze()

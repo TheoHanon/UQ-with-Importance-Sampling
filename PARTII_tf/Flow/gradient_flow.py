@@ -7,8 +7,8 @@ from typing import Tuple
 
 class GradientFlow(Flow):
 
-    def __init__(self, M: int, epochs: int, lr: float, model: Model, q0: tfp.distributions.Distribution):
-        super().__init__(M, epochs, lr, model, q0)
+    def __init__(self, M: int, epochs: int, lr: float, model: Model, q0: tfp.distributions.Distribution, burn_in: int = 500):
+        super().__init__(M, epochs, lr, model, q0, burn_in)
         self._logq = tf.Variable(tf.zeros((self.epochs, self.M)), trainable=False)
 
 
@@ -17,14 +17,21 @@ class GradientFlow(Flow):
         self._w[0].assign(self.q0.sample((self.M, self.model.d)))
         grad = self.compute_grad(self._w[0])
 
-        progbar = tf.keras.utils.Progbar(target=self.epochs)
-        
+        progbar = tf.keras.utils.Progbar(target=self.epochs+self.burn_in)
+
+        for i in range(self.burn_in):
+
+            self._w[0].assign(self._w[0] + self.lr*grad)
+            grad = self.compute_grad(self._w[0])
+
+            progbar.update(i)
+
         for i in range(1, self.epochs):
 
             self._w[i].assign(self._w[i-1] + self.lr*grad)
             grad = self.compute_grad(self._w[i])
 
-            progbar.update(i+1)
+            progbar.update(i+self.burn_in+1)
 
         return self._w
         
@@ -35,7 +42,16 @@ class GradientFlow(Flow):
 
         grad, lap_new = self.compute_grad_and_lap(self._w[0])
 
-        progbar = tf.keras.utils.Progbar(target=self.epochs)
+        progbar = tf.keras.utils.Progbar(target=self.epochs+self.burn_in)
+
+        for i in range(self.burn_in):
+
+            self._w[0].assign(self._w[0] + self.lr*grad)
+
+            lap_old = lap_new
+            grad, lap_new = self.compute_grad_and_lap(self._w[0])
+            self._logq[0].assign(self._logq[0] - self.lr/2 * (lap_old + lap_new))
+            progbar.update(i)
         
         for i in range(1, self.epochs):
 
@@ -44,6 +60,6 @@ class GradientFlow(Flow):
             lap_old = lap_new
             grad, lap_new = self.compute_grad_and_lap(self._w[i])
             self._logq[i].assign(self._logq[i-1] - self.lr/2 * (lap_old + lap_new))
-            progbar.update(i+1)
+            progbar.update(i+1+self.burn_in)
 
         return self._w, self._logq

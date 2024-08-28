@@ -34,8 +34,8 @@ class Model:
     def logP(self, w: tf.Tensor) -> tf.Tensor:
         
         prior = tf.reduce_sum(self.prior.log_prob(w), axis = 1)
-        likelihood = self.likelihood.log_prob(tf.sqrt(tf.reduce_mean(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2), axis = 1)))
+        likelihood = self.likelihood.log_prob(tf.reduce_mean(tf.sqrt(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2)), axis = 1))
         # likelihood = - tf.reduce_mean(tf.reduce_sum((self.Y_train[None, ...] - self.gw(self.X_train, w))**2, axis = 2), axis = 1) / (2 * self.likelihood.scale**2)
-        return likelihood + prior
+        return likelihood #+ prior
 
 

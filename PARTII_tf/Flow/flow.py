@@ -9,18 +9,20 @@ from Model import model
 
 class Flow(ABC):
 
-    def __init__(self, M:int, epochs:int, lr:float, model : model.Model, q0 : tfp.distributions.Distribution):
+    def __init__(self, M:int, epochs:int, lr:float, model : model.Model, q0 : tfp.distributions.Distribution, burn_in : int = 500):
         """
         Args:
             N: int Number of particles
             nStep: int Number of steps
             dt: float Time step
             q0: Distribution Initial distribution
+            burn_in: int Number of burn-in steps
         """
 
         self.M = M
         self.lr = lr
         self.epochs = epochs
+        self.burn_in = burn_in
 
         self.model = model
         self.q0 = q0
@@ -42,6 +44,7 @@ class Flow(ABC):
         with tf.GradientTape() as tape:
             tape.watch(w)
             logP = self.model.logP(w)
+            
         grad = tape.gradient(logP, w)
         grad = tf.clip_by_value(grad, clip_value_min=-1e0, clip_value_max=1e0)
 
@@ -87,16 +90,20 @@ class Flow(ABC):
     def flow(self):
         pass
 
-
 class MCMC(Flow):
 
-    def __init__(self, burn_in, *args, **kwargs):
+    def __init__(self,
+                M:int,
+                epochs:int, 
+                lr:float, 
+                model : model.Model, 
+                initializer: tf.keras.initializers.Initializer,
+                burn_in : int = 500):
 
-        self.burn_in = burn_in
         self.kernel = None
-        super(MCMC, self).__init__(*args, **kwargs)
+        self.initializer = initializer
+        super(MCMC, self).__init__(M, epochs, lr, model, q0 = None, burn_in = burn_in)
 
-    
     @abstractmethod
     def set_kernel(self):
         pass
@@ -110,6 +117,7 @@ class MCMC(Flow):
     def flow(self):
 
         self.set_kernel()
+        self._w[0].assign(self.initializer(shape = (self.M, self.model.d)))
         kernel_results = None
 
         progbar = tf.keras.utils.Progbar(target=self.epochs + self.burn_in)
