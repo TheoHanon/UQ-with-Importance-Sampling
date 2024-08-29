@@ -46,7 +46,7 @@ class Flow(ABC):
             logP = self.model.logP(w)
             
         grad = tape.gradient(logP, w)
-        grad = tf.clip_by_value(grad, clip_value_min=-1e0, clip_value_max=1e0)
+        grad = tf.clip_by_value(grad, clip_value_min=-1e1, clip_value_max=1e1)
 
         return grad
 
@@ -69,7 +69,7 @@ class Flow(ABC):
                 logp = self.model.logP(w)
 
             grad = tape1.gradient(logp, w) 
-            grad = tf.clip_by_value(grad, clip_value_min=-1e0, clip_value_max=1e0)
+            grad = tf.clip_by_value(grad, clip_value_min=-1e1, clip_value_max=1e1)
     
         lap = tf.linalg.trace(tape2.batch_jacobian(grad, w))
         

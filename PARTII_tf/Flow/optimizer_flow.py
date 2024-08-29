@@ -15,7 +15,7 @@ class OptimizerFlow(Flow):
 
         super().__init__(M, epochs, lr, model, q0 = None, burn_in=burn_in)
 
-        self.optimizer = optimizer(learning_rate = lr)
+        self.optimizer = optimizer
         self.initializer = initializer
         self._training_w = tf.Variable(tf.zeros((self.M, self.model.d)), trainable=True)
         

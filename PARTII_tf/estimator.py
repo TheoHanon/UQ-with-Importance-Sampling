@@ -106,7 +106,7 @@ class ImportanceSampling(Estimator):
             logp = self.model.logP(self.samples_weight[t])
             log_ratio = logp - self.logq[t]
             self.importance_weight[t] = tf.exp(tf.clip_by_value(log_ratio - tf.reduce_logsumexp(log_ratio, axis = 0), clip_value_min = -500, clip_value_max = 500))
-            
+        
             mean[t] = tf.reduce_sum(y_pred * self.importance_weight[t][:, None, None], axis = 0)
             var[t]  = tf.reduce_sum((y_pred - mean[t][None, ...])**2 * self.importance_weight[t][:, None, None], axis = 0)
 

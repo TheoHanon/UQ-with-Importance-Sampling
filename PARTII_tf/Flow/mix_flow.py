@@ -53,7 +53,7 @@ class MixFlow(Flow):
 
         self._w[0].assign(self.q0.sample((self.M, self.model.d)))
         self._logq[0].assign(tf.reduce_sum(self.q0.log_prob(self._w[0]), axis =1))
-        z = tf.Variable(tf.zeros(self.model.d), trainable = False)
+        z = tf.Variable(tf.zeros(self.M, self.model.d), trainable = False)
 
         D_square_root = tf.sqrt(self.k) * tf.eye(self.model.d)
         D_inv = 1/self.k * tf.ones(self.model.d)
@@ -64,19 +64,19 @@ class MixFlow(Flow):
         for i in range(self.burn_in):
 
             # Diffusion step
-
+            z = self._w[0]
             noise = tf.sqrt(self.lr) * D_square_root @ tf.transpose(diffusion_noise.sample((self.M,)))
-            z.assign(self._w[0] + tf.transpose(noise))
+            self._w[0].assign(z + tf.transpose(noise))
 
-            diff = z[:, None, :] - self._w[0, None, :, :]
+            diff = self._w[0, :, None, :] - z
             exponents = -0.5 * tf.einsum("mij, j, mij -> mi", diff, D_inv / (self.lr), diff) 
 
             self._logq[0].assign(tf.reduce_logsumexp(exponents, axis = 1) - self.model.d/2 * tf.math.log(2*tf.constant(np.pi)*self.lr*self.k*self.M))
-            grad, lap_old = self.compute_grad_and_lap(z)
+            grad, lap_old = self.compute_grad_and_lap(self._w[0])
 
             # Gradient step
 
-            self._w[0].assign(z + (self.lr/2)*grad)
+            self._w[0].assign(self._w[0] + (self.lr/2)*grad)
             _, lap_new = self.compute_grad_and_lap(self._w[0])
             self._logq[0].assign(self._logq[0] - self.lr/4 * (lap_old + lap_new))
 
@@ -102,7 +102,7 @@ class MixFlow(Flow):
             _, lap_new = self.compute_grad_and_lap(self._w[i])
             self._logq[i].assign(self._logq[i] - self.lr/4 * (lap_old + lap_new))
 
-            progbar.update(i+1)
+            progbar.update(i+1+self.burn_in)
 
         
         return self._w, self._logq
